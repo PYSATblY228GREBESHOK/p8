@@ -1,138 +1,140 @@
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Xml;
 
-namespace speed
+namespace ConsoleApp2
 {
-    class MainMenu
+    internal class Program
     {
-        protected static List<User> Users;
-        private static void Main()
+        static void Main(string[] args)
         {
-            if (!File.Exists("stats.json"))
-            {
-                File.Create("stats.json");
-            }
-            Users = JsonConvert.DeserializeObject<List<User>>(File.ReadAllText("stats.json"));
-            if (Users == null)
-                Users = new List<User>();
-            while (true)
-            {
-                Console.ForegroundColor = ConsoleColor.White;
-                if (Users.Count > 1)
-                {
-                    SortUsers();
-                }
-                ConsoleKeyInfo key;
-                do
-                {
-                    Console.Clear();
-                    foreach (var user in Users)
-                        Console.WriteLine(user.Data());
-                    Console.WriteLine("Пройти тест");
-                    key = Console.ReadKey();
-                } while (key.Key != ConsoleKey.Add);
-                SpeedTestManager.Registration();
-                File.WriteAllText("stats.json", JsonConvert.SerializeObject(Users));
-            }
-        }
-        protected static bool UserExist(string name)
-        {
-            foreach (var user in Users)
-            {
-                if (user.Name == name)
-                    return true;
-            }
-            return false;
-        }
-        protected static void SortUsers()
-        {
-            Users = (List<User>)Users.OrderByDescending(x => x.Id);
-        }
-    }
-    class User
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
-        public int Result { get; set; }
-        public User(int id, string name, int result)
-        {
-            Id = id;
-            Name = name;
-            Result = result;
-        }
+            bool start = true;
+            Users user = new Users();
+            Text txt = new Text();
+            Stopwatch sw = new Stopwatch();
 
-        public string Data()
-        {
-            return "Имя: " + Name + "Символов в минуту: " + Result;
-        }
-    }
-    class SpeedTestManager : MainMenu
-    {
-        private static bool testInPtogress = false;
-        private static string text = "Надо уважать всякого человека, какой бы он ни был жалкий и смешной. Надо помнить, что во всяком человеке живёт тот же дух, какой и в нас. Даже тогда, когда человек отвратителен и душой и телом, надо думать так: “Да, на свете должны быть и такие уроды, и надо терпеть их”. Если же мы показываем таким людям наше отвращение, то, во-первых, мы несправедливы, а во-вторых, вызываем таких людей на войну не на жизнь, а на смерть";
-        private static int ind = 0, time = 0;
-        public static void Registration()
-        {
-            Console.Clear();
-            Console.WriteLine("Введите имя:");
-            string name = Console.ReadLine();
-            if (name == "")
-            {
-                Registration();
-            }
-            if (!UserExist(name))
-            {
-                Start(name);
-            }
-            else Registration();
-        }
-        public static void Start(string name)
-        {
-            ConsoleKeyInfo ch;
-            do
+            while (start)
             {
                 Console.Clear();
-                Console.WriteLine(text);
-                Console.WriteLine("Как только будете готовы - нажмите Enter");
-                ch = Console.ReadKey(true);
-            } while (ch.Key != ConsoleKey.Enter);
-            testInPtogress = true;
-            new Thread(Timer).Start();
-            while (testInPtogress)
-            {
-                ch = Console.ReadKey(true);
-                char chr = text[ind];
-                if (ch.KeyChar.ToString() == chr.ToString())
+                Console.Write("Введите ваш ник: ");
+                user.Name = Console.ReadLine();
+
+                Console.Clear();
+                List<char> list = Text.AddText();
+                Console.WriteLine("\nЧтобы начать, нажмите Enter");
+                while (Console.ReadKey(true).Key != ConsoleKey.Enter) { }
+
+                sw.Restart();
+                bool completed = txt.ReadText(list, sw);
+                sw.Stop();
+
+                if (completed)
                 {
-                    int sop = ind / 120, pos = ind % 120;
-                    Console.SetCursorPosition(ind % 120, ind / 120);
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.Write(ch.KeyChar);
-                    ind++;
-                    if (ind - 1 == text.Length)
-                        testInPtogress = false;
+                    user.CharactersPerMinute = (int)(list.Count / (sw.Elapsed.TotalMinutes));
+                    user.CharactersPerSecond = list.Count / sw.Elapsed.TotalSeconds;
+                }
+                else
+                {
+                    user.CharactersPerMinute = 0;
+                    user.CharactersPerSecond = 0;
                 }
 
-            }
-            Console.SetCursorPosition(0, 20);
-            Console.WriteLine("Тест окончен");
-            Console.ReadKey(true);
-            Users.Add(new User(Users.Count + 1, name, ind / (60 - time) * 60));
+                user.AddTableRecords();
+                user.DrewTableRecords();
 
+                Console.WriteLine("Чтобы попробовать еще раз, нажмите Enter. Чтобы выйти, нажмите Escape.");
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Escape)
+                {
+                    start = false;
+                }
+            }
         }
-        private static void Timer()
+    }
+
+    internal class Users
+    {
+        public string Name;
+        public int CharactersPerMinute;
+        public double CharactersPerSecond;
+        private static string filePath = "TableRecords.json";
+        private static List<Users> ListUser = new List<Users>();
+
+        public Users()
         {
-            time = 60;
-            do
+            LoadTableRecords();
+        }
+
+        public void AddTableRecords()
+        {
+            var existingUser = ListUser.FirstOrDefault(u => u.Name == Name);
+            if (existingUser != null)
             {
-                Console.SetCursorPosition(20, 15);
-                Console.WriteLine("    ");
-                Console.SetCursorPosition(20, 15);
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.Write(time == 60 ? "1:00" : $"0:" + time);
-                Thread.Sleep(1000);
-                time--;
-                if (time == 0) testInPtogress = false;
-            } while (testInPtogress);
+                existingUser.CharactersPerMinute = CharactersPerMinute;
+                existingUser.CharactersPerSecond = CharactersPerSecond;
+            }
+            else
+            {
+                ListUser.Add(this);
+            }
+            SaveTableRecords();
+        }
+
+        public void DrewTableRecords()
+        {
+            Console.WriteLine("Таблица рекордов:");
+            foreach (var element in ListUser)
+            {
+                Console.WriteLine($"{element.Name} - Символов в минуту: {element.CharactersPerMinute}, Символов в секунду: {element.CharactersPerSecond:F2}");
+            }
+        }
+
+        private static void LoadTableRecords()
+        {
+            if (File.Exists(filePath))
+            {
+                string json = File.ReadAllText(filePath);
+                ListUser = JsonConvert.DeserializeObject<List<Users>>(json) ?? new List<Users>();
+            }
+        }
+
+        private static void SaveTableRecords()
+        {
+            string json = JsonConvert.SerializeObject(ListUser);
+            File.WriteAllText(filePath, json);
+        }
+    }
+
+    internal class Text
+    {
+        public static List<char> AddText()
+        {
+            string text = "There are four types of schools in the English and Welsh education system - nursery.";
+            Console.WriteLine(text);
+            return new List<char>(text);
+        }
+
+        public bool ReadText(List<char> list, Stopwatch sw)
+        {
+            int index = 0;
+            while (index < list.Count && sw.Elapsed.TotalMinutes < 1)
+            {
+                Console.SetCursorPosition(index, 1);
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write(list[index]);
+                Console.ForegroundColor = ConsoleColor.Gray;
+                char inputChar = Console.ReadKey(true).KeyChar;
+                if (inputChar == list[index])
+                {
+                    index++;
+                }
+            }
+            return index == list.Count;
         }
     }
 }
